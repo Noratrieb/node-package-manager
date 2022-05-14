@@ -1,3 +1,5 @@
+mod manifest;
+
 fn main() {
-    println!("Hello, world!");
+    let manifest = "package.json";
 }
