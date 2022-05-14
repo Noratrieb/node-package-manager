@@ -4,7 +4,7 @@ use color_eyre::Result;
 use indexmap::IndexMap;
 use reqwest::blocking::Client;
 use serde::Deserialize;
-use tracing::info;
+use tracing::debug;
 
 use crate::{
     manifest::{Bugs, Human, Person, Repository},
@@ -12,61 +12,61 @@ use crate::{
 };
 
 #[derive(Debug, Deserialize)]
-struct Dist {
-    shasum: String,
-    tarball: String,
-    integrity: Option<String>,
+pub struct Dist {
+    pub shasum: String,
+    pub tarball: String,
+    pub integrity: Option<String>,
     #[serde(rename = "fileCount")]
-    file_count: Option<u32>,
+    pub file_count: Option<u32>,
     #[serde(rename = "unpackedSize")]
-    unpacked_size: Option<u32>,
+    pub unpacked_size: Option<u32>,
     #[serde(rename = "npm-signature")]
-    npm_signature: Option<String>,
+    pub npm_signature: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct VersionMeta {
-    _from: Option<String>,
-    _id: String,
+pub struct VersionMeta {
+    pub _from: Option<String>,
+    pub _id: String,
     #[serde(rename = "_nodeVersion")]
-    _node_version: String,
+    pub _node_version: String,
     #[serde(rename = "_npmUser")]
-    _npm_user: Person,
+    pub _npm_user: Person,
     #[serde(rename = "_npmVersion")]
-    _npm_version: String,
-    _shasum: Option<String>,
+    pub _npm_version: String,
+    pub _shasum: Option<String>,
     #[serde(rename = "_hasShrinkwrap")]
-    _has_shrinkwrap: Option<bool>,
-    dist: Dist,
-    files: Vec<String>,
+    pub _has_shrinkwrap: Option<bool>,
+    pub dist: Dist,
+    pub files: Vec<String>,
 
     #[serde(flatten)]
-    package_json: PackageJson,
+    pub package_json: PackageJson,
 }
 
 #[derive(Debug, Deserialize)]
-struct PackageMeta {
-    _id: String,
-    _rev: String,
+pub struct PackageMeta {
+    pub _id: String,
+    pub _rev: String,
     #[serde(rename = "dist-tags")]
-    dist_tags: IndexMap<String, String>,
-    name: String,
-    time: IndexMap<String, String>,
-    users: IndexMap<String, bool>,
-    versions: IndexMap<String, VersionMeta>,
+    pub dist_tags: IndexMap<String, String>,
+    pub name: String,
+    pub time: IndexMap<String, String>,
+    pub users: IndexMap<String, bool>,
+    pub versions: IndexMap<String, VersionMeta>,
 
-    author: Human,
-    bugs: Option<Bugs>,
-    contributors: Option<Vec<Human>>,
-    description: Option<String>,
-    homepage: Option<String>,
-    keywords: Option<Vec<String>>,
-    license: Option<String>,
-    maintainers: Option<Vec<Human>>,
-    readme: Option<String>,
+    pub author: Human,
+    pub bugs: Option<Bugs>,
+    pub contributors: Option<Vec<Human>>,
+    pub description: Option<String>,
+    pub homepage: Option<String>,
+    pub keywords: Option<Vec<String>>,
+    pub license: Option<String>,
+    pub maintainers: Option<Vec<Human>>,
+    pub readme: Option<String>,
     #[serde(rename = "readmeFilename")]
-    readme_filename: Option<String>,
-    repository: Option<Repository>,
+    pub readme_filename: Option<String>,
+    pub repository: Option<Repository>,
 }
 
 pub struct NpmClient {
@@ -82,20 +82,13 @@ impl NpmClient {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn inspect_package(&self, name: &str) -> Result<()> {
+    pub fn inspect_package(&self, name: &str) -> Result<PackageMeta> {
         let res = self.reqwest.get(format!("{BASE_URL}/{name}")).send()?;
         let code = res.status();
         let body = res.text()?;
-        let meta = serde_json::from_str::<PackageMeta>(&body);
-        if let Err(err) = &meta {
-            tracing::error!(?err, "error");
-            let col = err.column();
-            let after = &body[col..][..10];
-            let before = &body[col - 100..col];
-            tracing::error!(%before, %after, "err");
-        }
+        let meta = serde_json::from_str::<PackageMeta>(&body)?;
 
-        info!(?code, ?meta, "Received response");
-        Ok(())
+        debug!(?code, ?meta, "Received response");
+        Ok(meta)
     }
 }

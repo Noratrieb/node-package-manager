@@ -1,7 +1,7 @@
 use std::fs;
 
 use color_eyre::{eyre::WrapErr, Result};
-use tracing::{debug, metadata::LevelFilter};
+use tracing::{debug, info, metadata::LevelFilter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
 use crate::{download::NpmClient, manifest::PackageJson};
@@ -23,7 +23,18 @@ fn main() -> Result<()> {
     let client = NpmClient::new();
 
     for (name, _) in &manifest.dependencies.unwrap() {
-        client.inspect_package(name)?;
+        look_at_package(name, &client)?;
+    }
+
+    Ok(())
+}
+
+#[tracing::instrument(skip(client))]
+fn look_at_package(name: &str, client: &NpmClient) -> Result<()> {
+    let meta = client.inspect_package(name)?;
+
+    for version in meta.versions.keys() {
+        info!(%version);
     }
 
     Ok(())
