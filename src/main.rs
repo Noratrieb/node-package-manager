@@ -22,7 +22,7 @@ fn main() -> Result<()> {
 
     let client = NpmClient::new();
 
-    for (name, _) in &manifest.dependencies {
+    for (name, _) in &manifest.dependencies.unwrap() {
         client.inspect_package(name)?;
     }
 
