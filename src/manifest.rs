@@ -1,4 +1,5 @@
 use indexmap::map::IndexMap;
+use node_semver::{Range, Version};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -67,12 +68,12 @@ pub enum Override {
     Nested(IndexMap<String, Override>),
 }
 
-/// https://docs.npmjs.com/cli/v8/configuring-npm/package-json
+/// <https://docs.npmjs.com/cli/v8/configuring-npm/package-json>
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackageJson {
     pub name: String,
-    pub version: String,
+    pub version: Version,
     pub description: Option<String>,
     pub keywords: Option<Vec<String>>,
     pub homepage: Option<String>,
@@ -90,12 +91,12 @@ pub struct PackageJson {
     pub repository: Option<Repository>,
     pub scripts: Option<IndexMap<String, String>>,
     pub config: Option<IndexMap<String, serde_json::Value>>,
-    pub dependencies: Option<IndexMap<String, String>>,
-    pub dev_dependencies: Option<IndexMap<String, String>>,
-    pub peer_dependencies: Option<IndexMap<String, String>>,
+    pub dependencies: Option<IndexMap<String, Range>>,
+    pub dev_dependencies: Option<IndexMap<String, Range>>,
+    pub peer_dependencies: Option<IndexMap<String, Range>>,
     pub peer_dependencies_meta: Option<IndexMap<String, PeerDependencyMeta>>,
     pub bundled_dependencies: Option<Vec<String>>,
-    pub optional_dependencies: Option<IndexMap<String, String>>,
+    pub optional_dependencies: Option<IndexMap<String, Range>>,
     pub overrides: Option<IndexMap<String, Override>>,
     pub engines: Option<IndexMap<String, String>>,
     pub os: Option<Vec<String>>,

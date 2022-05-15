@@ -1,14 +1,19 @@
 #![allow(dead_code)]
 
+use std::path::Path;
+
+use bytes::Buf;
 use color_eyre::Result;
 use indexmap::IndexMap;
-use reqwest::blocking::Client;
+use node_semver::Version;
+use reqwest::Client;
 use serde::Deserialize;
-use tracing::debug;
+use tar::Archive;
+use tracing::{debug, info};
 
 use crate::{
     manifest::{Bugs, Human, Person, Repository},
-    PackageJson,
+    PackageJson, WrapErr,
 };
 
 #[derive(Debug, Deserialize)]
@@ -53,8 +58,7 @@ pub struct PackageMeta {
     pub name: String,
     pub time: IndexMap<String, String>,
     pub users: IndexMap<String, bool>,
-    pub versions: IndexMap<String, VersionMeta>,
-
+    pub versions: IndexMap<Version, VersionMeta>,
     pub author: Human,
     pub bugs: Option<Bugs>,
     pub contributors: Option<Vec<Human>>,
@@ -69,6 +73,7 @@ pub struct PackageMeta {
     pub repository: Option<Repository>,
 }
 
+#[derive(Default)]
 pub struct NpmClient {
     reqwest: Client,
 }
@@ -82,13 +87,38 @@ impl NpmClient {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn inspect_package(&self, name: &str) -> Result<PackageMeta> {
-        let res = self.reqwest.get(format!("{BASE_URL}/{name}")).send()?;
+    pub async fn fetch_package_meta(&self, name: &str) -> Result<PackageMeta> {
+        let res = self
+            .reqwest
+            .get(format!("{BASE_URL}/{name}"))
+            .send()
+            .await?;
         let code = res.status();
-        let body = res.text()?;
+        let body = res.text().await?;
         let meta = serde_json::from_str::<PackageMeta>(&body)?;
 
         debug!(?code, ?meta, "Received response");
         Ok(meta)
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn download_package(&self, name: &str, url: &str) -> Result<()> {
+        let response = self
+            .reqwest
+            .get(url)
+            .send()
+            .await
+            .wrap_err("getting response")?;
+        let tarball = response.bytes().await.wrap_err("fetching body")?;
+
+        let tar = flate2::read::GzDecoder::new(tarball.reader());
+        let mut archive = tar::Archive::new(tar);
+        archive
+            .unpack(Path::new("node_modules").join(name))
+            .wrap_err("unpack tarball")?;
+
+        info!("successfully downloaded package");
+
+        Ok(())
     }
 }

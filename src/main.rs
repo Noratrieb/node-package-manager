@@ -1,61 +1,43 @@
-use std::fs;
+use std::{fs, io};
 
 use color_eyre::{
     eyre::{bail, WrapErr},
     Result,
 };
-use semver_rs::{Range, Version};
-use tracing::{debug, info, metadata::LevelFilter, warn};
+use tracing::metadata::LevelFilter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
-use crate::{download::NpmClient, manifest::PackageJson};
+use crate::{download::NpmClient, manifest::PackageJson, resolve::ResolveContext};
 
 mod download;
 mod manifest;
+mod resolve;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     color_eyre::install()?;
     setup_tracing()?;
 
-    let manifest = "testing/package.json";
+    let manifest = "package.json";
     let manifest = fs::read_to_string(manifest).wrap_err("Opening package.json file")?;
 
     let manifest: PackageJson = serde_json::from_str(&manifest)?;
 
-    debug!(?manifest, "Read manifest");
+    let resolve_context = ResolveContext::new();
 
-    let client = NpmClient::new();
-
-    for (name, requested_version) in &manifest.dependencies.unwrap() {
-        look_at_package(name, requested_version, &client).wrap_err(format!("package {name}"))?;
+    match fs::metadata("node_modules") {
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            fs::create_dir("node_modules").wrap_err("creating node_modules directory")?;
+        }
+        Err(e) => bail!(e),
     }
 
-    Ok(())
-}
-
-#[tracing::instrument(skip(client))]
-fn look_at_package(name: &str, requested_version: &str, client: &NpmClient) -> Result<()> {
-    let requested = Range::new(requested_version).parse()?;
-
-    let meta = client.inspect_package(name)?;
-
-    info!(versions = ?meta.versions.keys());
-
-    let mut versions = meta
-        .versions
-        .keys()
-        .map(|v| Ok((v, Version::new(v).parse()?)))
-        .collect::<Result<Vec<_>, semver_rs::Error>>()?;
-
-    versions.sort_by(|a, b| b.cmp(a));
-
-    let chosen = versions.iter().find(|(_, version)| requested.test(version));
-
-    match chosen {
-        Some((version, _)) => {
-            info!(?version, "Found version")
-        }
-        None => bail!("could not find matching version for '{requested_version}'"),
+    for (name, requested_version) in &manifest.dependencies.unwrap() {
+        resolve_context
+            .download_package_and_deps(name, requested_version)
+            .await
+            .wrap_err(format!("package {name}"))?;
     }
 
     Ok(())
