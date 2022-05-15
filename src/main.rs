@@ -1,15 +1,15 @@
-use std::{fs, io};
-
-use color_eyre::{
-    eyre::{bail, WrapErr},
-    Result,
-};
+use color_eyre::{eyre::WrapErr, Result};
+use tokio::fs;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
-use crate::{download::NpmClient, manifest::PackageJson, resolve::ResolveContext};
+use crate::{
+    download::NpmClient, helper::create_dir_if_not_exists, manifest::PackageJson,
+    resolve::ResolveContext,
+};
 
 mod download;
+mod helper;
 mod manifest;
 mod resolve;
 
@@ -19,19 +19,15 @@ async fn main() -> Result<()> {
     setup_tracing()?;
 
     let manifest = "package.json";
-    let manifest = fs::read_to_string(manifest).wrap_err("Opening package.json file")?;
+    let manifest = fs::read_to_string(manifest)
+        .await
+        .wrap_err("Opening package.json file")?;
 
     let manifest: PackageJson = serde_json::from_str(&manifest)?;
 
     let resolve_context = ResolveContext::new();
 
-    match fs::metadata("node_modules") {
-        Ok(_) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            fs::create_dir("node_modules").wrap_err("creating node_modules directory")?;
-        }
-        Err(e) => bail!(e),
-    }
+    create_dir_if_not_exists("node_modules").await?;
 
     for (name, requested_version) in &manifest.dependencies.unwrap() {
         resolve_context

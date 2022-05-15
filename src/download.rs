@@ -8,10 +8,11 @@ use indexmap::IndexMap;
 use node_semver::Version;
 use reqwest::Client;
 use serde::Deserialize;
-use tar::Archive;
+use tokio::task::spawn_blocking;
 use tracing::{debug, info};
 
 use crate::{
+    create_dir_if_not_exists,
     manifest::{Bugs, Human, Person, Repository},
     PackageJson, WrapErr,
 };
@@ -103,6 +104,10 @@ impl NpmClient {
 
     #[tracing::instrument(skip(self))]
     pub async fn download_package(&self, name: &str, url: &str) -> Result<()> {
+        let module = Path::new("node_modules").join(name);
+
+        create_dir_if_not_exists(&module).await?;
+
         let response = self
             .reqwest
             .get(url)
@@ -111,11 +116,29 @@ impl NpmClient {
             .wrap_err("getting response")?;
         let tarball = response.bytes().await.wrap_err("fetching body")?;
 
-        let tar = flate2::read::GzDecoder::new(tarball.reader());
-        let mut archive = tar::Archive::new(tar);
-        archive
-            .unpack(Path::new("node_modules").join(name))
-            .wrap_err("unpack tarball")?;
+        spawn_blocking(move || -> Result<()> {
+            let tar = flate2::read::GzDecoder::new(tarball.reader());
+            let mut archive = tar::Archive::new(tar);
+
+            for entry in archive.entries()? {
+                let mut entry = entry?;
+                let path = entry.path()?;
+                let path = path
+                    .strip_prefix("package")
+                    .wrap_err("file name must start with package/")?;
+
+                let path = module.join(path);
+
+                info!(?path, "Unpacking file");
+
+                entry
+                    .unpack(&path)
+                    .wrap_err(format!("unpacking file {}", path.display()))?;
+            }
+
+            Ok(())
+        })
+        .await??;
 
         info!("successfully downloaded package");
 
