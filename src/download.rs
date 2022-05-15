@@ -74,7 +74,7 @@ pub struct PackageMeta {
     pub repository: Option<Repository>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct NpmClient {
     reqwest: Client,
 }

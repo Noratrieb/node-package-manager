@@ -3,12 +3,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use color_eyre::{eyre::bail, Result};
+use color_eyre::{eyre::eyre, Result};
 use node_semver::Range;
 use tracing::{debug, info};
 
 use crate::{download::PackageMeta, NpmClient, WrapErr};
 
+#[derive(Clone)]
 pub struct ResolveContext {
     meta_cache: Arc<RwLock<HashMap<String, Arc<PackageMeta>>>>,
     client: NpmClient,
@@ -63,16 +64,16 @@ impl ResolveContext {
             .filter(|version| version.satisfies(requested_version))
             .max();
 
-        match chosen {
-            Some(version) => {
-                info!(%version, "Found version");
-                self.client
-                    .download_package(name, &meta.versions[version].dist.tarball)
-                    .await
-                    .wrap_err("downloading package")?;
-            }
-            None => bail!("could not find matching version for '{requested_version}'"),
-        }
+        let version = chosen
+            .ok_or_else(|| eyre!("could not find matching version for '{requested_version}'"))?;
+
+        let package = &meta.versions[version];
+
+        info!(%version, "Found version");
+        self.client
+            .download_package(name, &package.dist.tarball)
+            .await
+            .wrap_err("downloading package")?;
 
         Ok(())
     }
